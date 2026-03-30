@@ -1,49 +1,68 @@
-# Python 缓存与虚拟环境
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-.env
-.venv/
-venv/
-env/
-
-# Streamlit 临时文件与配置
-.streamlit/
-*.tmp
-*.temp
-
-# 数据/图片/日志/报告大文件（避免仓库臃肿）
-*.png
-*.jpg
-*.jpeg
-*.svg
-*.pdf
-*.csv
-*.log
-*.md
-*.html
-output.log/
-output/
-
-# 系统文件
+# ================= 通用系统/日志文件忽略规则 =================
+# 系统缓存文件
 .DS_Store
 Thumbs.db
 Desktop.ini
 
-# 本地配置与密钥
-secrets.json
-config.ini
-# 忽略运行时生成的临时数据文件
-*.xml
-*.json
-*.txt
-*.log
-*.csv
-*.html
+# Python 缓存与编译文件
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+*.egg-info/
+.installed.cfg
+*.egg
+
+# 虚拟环境与依赖包
+venv/
+ENV/
+env/
+env3/
+.venv/
+
+# 运行时生成的临时/输出文件（保留白名单）
+# 允许上传：*.log, *.txt, *.csv, *.html, *.json（全部保留，不删数据文件）
+output.log
 output/
-temp/
-# 永久忽略大体积分析图片文件夹，防止误传
-File_analysis_*/**
+*.tmp
+*.cache
+
+# 编辑器与系统配置
+.vscode/
+.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+
+# 应用特定配置
+config.ini
+secrets.toml
+.streamlit/
+
+# 其他不必要的大文件/文件夹
+__pycache__/
+.pytest_cache/
+.coverage
+htmlcov/
+# ================= 永久忽略所有图片文件 =================
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.gif
+*.bmp
 *.tiff
-*.tif
