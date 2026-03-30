@@ -19,31 +19,64 @@ TOPICS = {
 }
 
 def classify_topic(title):
-    """学术级精准分类函数"""
+    """学术级精准分类函数 - 优化版"""
     # 空值安全处理
     if not title or not isinstance(title, str):
         return 'other'
     
     title_lower = title.lower()
     
-    # 长关键词优先匹配，按优先级排序
-    # 基因组选择：长词优先
-    if any(kw in title_lower for kw in ['genomic selection', '基因组选择', 'gs 育种', 'genomic selection breeding']):
+    # 长关键词优先匹配，按优先级排序（避免子串误判）
+    
+    # 1. 基因组选择（最高优先级）
+    genomic_selection_keywords = [
+        'genomic selection', 'genomic prediction', 'genomic estimated breeding value',
+        'gebv', 'gblup', 'rrblup', 'bayesian', '基因组选择', '基因组预测', '基因组估计育种值'
+    ]
+    if any(kw in title_lower for kw in genomic_selection_keywords):
         return 'genomicSelection'
-    # AI育种：长词优先
-    elif any(kw in title_lower for kw in ['artificial intelligence', 'machine learning', 'deep learning', 'neural network', '人工智能', '深度学习', '机器学习', '神经网络']):
+    
+    # 2. AI育种/机器学习（避免短词匹配）
+    ai_keywords = [
+        'artificial intelligence', 'machine learning', 'deep learning', 
+        'neural network', 'random forest', 'support vector machine', 'svm',
+        'convolutional neural network', 'cnn', 'recurrent neural network', 'rnn',
+        '人工智能', '深度学习', '机器学习', '神经网络', '随机森林', '支持向量机'
+    ]
+    if any(kw in title_lower for kw in ai_keywords):
         return 'aiBreeding'
-    # 作物遗传改良：农业关键词
-    elif any(kw in title_lower for kw in ['rice', 'wheat', 'soybean', 'crop', 'plant', 'yield', '作物', '产量', '遗传改良', '玉米', '小麦', '水稻', '大豆']):
-        return 'cropGenetics'
-    # 分子标记辅助
-    elif any(kw in title_lower for kw in ['molecular marker', 'marker', 'ssr', 'snp', '分子标记']):
+    
+    # 3. 分子标记辅助（在作物遗传改良之前，避免被拦截）
+    marker_keywords = [
+        'molecular marker', 'ssr marker', 'snp marker', 'indel', 'rapd', 'aflp',
+        'genome-wide association', 'gwas', 'linkage mapping', 'qtl mapping',
+        'association mapping', 'marker-assisted', 'mas', '分子标记', '全基因组关联'
+    ]
+    if any(kw in title_lower for kw in marker_keywords):
         return 'molecularMarker'
-    # 数量遗传学
-    elif any(kw in title_lower for kw in ['quantitative', 'qtl', 'heritability', '数量遗传', '遗传力']):
+    
+    # 4. 数量遗传学（在作物遗传改良之前）
+    quantitative_keywords = [
+        'quantitative trait', 'qtl', 'quantitative genetics', 'heritability',
+        'genetic variance', 'additive effect', 'dominance', 'epistasis',
+        'blup', 'best linear unbiased prediction', '数量遗传', '遗传力', '数量性状'
+    ]
+    if any(kw in title_lower for kw in quantitative_keywords):
         return 'quantitativeGenetics'
-    else:
-        return 'other'
+    
+    # 5. 作物遗传改良（更广泛的农业关键词）
+    crop_keywords = [
+        'rice', 'wheat', 'soybean', 'maize', 'corn', 'barley', 'oats', 'sorghum',
+        'crop', 'cultivar', 'variety', 'breeding', 'hybrid', 'inbred line',
+        'plant', 'agronomic trait', 'yield', 'drought tolerance', 'salt stress',
+        'disease resistance', 'pest resistance', '作物', '产量', '遗传改良',
+        '玉米', '小麦', '水稻', '大豆', '品种', '育种', '杂交', '抗旱', '耐盐'
+    ]
+    if any(kw in title_lower for kw in crop_keywords):
+        return 'cropGenetics'
+    
+    # 6. 其他领域（默认分类）
+    return 'other'
 
 def search_pubmed(keywords, max_results=20):
     """稳定、合规的PubMed搜索函数"""
@@ -334,17 +367,25 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
             # 限流优化
             time.sleep(0.5)
     
-    # 修复过滤逻辑，仅保留被引次数≥10的文献
+    # 严格过滤逻辑：仅保留被引次数≥100的高影响力文献
     filtered_articles = []
-    for article in articles:
-        if get_citations:
+    if get_citations and articles:
+        for article in articles:
             citation_count = article.get('Cited_By_Count', 0)
-            if citation_count >= 10:
+            # 严格标准：被引数必须≥100
+            if isinstance(citation_count, int) and citation_count >= 100:
                 filtered_articles.append(article)
-        else:
-            filtered_articles.append(article)
+            elif isinstance(citation_count, str):
+                try:
+                    if int(citation_count) >= 100:
+                        filtered_articles.append(article)
+                except ValueError:
+                    pass
+    elif not get_citations:
+        # 如果不获取引用信息，则不过滤
+        filtered_articles = articles
     
-    print(f"过滤后剩余 {len(filtered_articles)} 篇高引用文献")
+    print(f"严格过滤后剩余 {len(filtered_articles)} 篇高影响力文献（被引≥100次）")
     return filtered_articles
 
 def get_node_size(citations):
