@@ -4,6 +4,9 @@ import xml.etree.ElementTree as ET
 import time
 import re
 
+# 设置 NCBI API 调用的邮箱地址
+Entrez_email = "904304877@qq.com"
+
 PUBMED_API_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 
 TOPICS = {
@@ -33,7 +36,7 @@ def classify_topic(title):
 
 def search_pubmed(keywords, max_results=20):
     encoded_terms = urllib.parse.quote(keywords)
-    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}"
+    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&email={Entrez_email}"
     
     try:
         with urllib.request.urlopen(esearch_url, timeout=30) as response:
@@ -58,7 +61,7 @@ def fetch_article_details(ids):
         return []
     
     id_string = ",".join(ids)
-    fetch_url = f"{PUBMED_API_URL}efetch.fcgi?db=pubmed&id={id_string}&retmode=xml"
+    fetch_url = f"{PUBMED_API_URL}efetch.fcgi?db=pubmed&id={id_string}&retmode=xml&email={Entrez_email}"
     
     try:
         with urllib.request.urlopen(fetch_url, timeout=60) as fetch_response:
@@ -151,7 +154,7 @@ def get_citation_info(pmid):
     cited_by = []
     
     try:
-        ref_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_refs"
+        ref_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_refs&email={Entrez_email}"
         with urllib.request.urlopen(ref_url, timeout=30) as ref_response:
             ref_content = ref_response.read()
         
@@ -169,7 +172,7 @@ def get_citation_info(pmid):
         pass
     
     try:
-        cited_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_citedin"
+        cited_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_citedin&email={Entrez_email}"
         with urllib.request.urlopen(cited_url, timeout=30) as cited_response:
             cited_content = cited_response.read()
         
