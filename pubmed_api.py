@@ -19,15 +19,14 @@ TOPICS = {
 }
 
 def classify_topic(title):
-    """学术级精准分类函数 - 优化版"""
+    """学术级精准分类函数"""
     # 空值安全处理
     if not title or not isinstance(title, str):
         return 'other'
     
     title_lower = title.lower()
     
-    # 长关键词优先匹配，按优先级排序（避免子串误判）
-    
+    # 长关键词优先匹配，按优先级排序
     # 1. 基因组选择（最高优先级）
     genomic_selection_keywords = [
         'genomic selection', 'genomic prediction', 'genomic estimated breeding value',
@@ -36,7 +35,7 @@ def classify_topic(title):
     if any(kw in title_lower for kw in genomic_selection_keywords):
         return 'genomicSelection'
     
-    # 2. AI育种/机器学习（避免短词匹配）
+    # 2. AI育种/机器学习
     ai_keywords = [
         'artificial intelligence', 'machine learning', 'deep learning', 
         'neural network', 'random forest', 'support vector machine', 'svm',
@@ -46,7 +45,7 @@ def classify_topic(title):
     if any(kw in title_lower for kw in ai_keywords):
         return 'aiBreeding'
     
-    # 3. 分子标记辅助（在作物遗传改良之前，避免被拦截）
+    # 3. 分子标记辅助
     marker_keywords = [
         'molecular marker', 'ssr marker', 'snp marker', 'indel', 'rapd', 'aflp',
         'genome-wide association', 'gwas', 'linkage mapping', 'qtl mapping',
@@ -55,7 +54,7 @@ def classify_topic(title):
     if any(kw in title_lower for kw in marker_keywords):
         return 'molecularMarker'
     
-    # 4. 数量遗传学（在作物遗传改良之前）
+    # 4. 数量遗传学
     quantitative_keywords = [
         'quantitative trait', 'qtl', 'quantitative genetics', 'heritability',
         'genetic variance', 'additive effect', 'dominance', 'epistasis',
@@ -64,7 +63,7 @@ def classify_topic(title):
     if any(kw in title_lower for kw in quantitative_keywords):
         return 'quantitativeGenetics'
     
-    # 5. 作物遗传改良（更广泛的农业关键词）
+    # 5. 作物遗传改良
     crop_keywords = [
         'rice', 'wheat', 'soybean', 'maize', 'corn', 'barley', 'oats', 'sorghum',
         'crop', 'cultivar', 'variety', 'breeding', 'hybrid', 'inbred line',
@@ -75,14 +74,22 @@ def classify_topic(title):
     if any(kw in title_lower for kw in crop_keywords):
         return 'cropGenetics'
     
-    # 6. 其他领域（默认分类）
+    # 6. 其他领域
     return 'other'
 
 def search_pubmed(keywords, max_results=20):
     """稳定、合规的PubMed搜索函数"""
     encoded_terms = urllib.parse.quote(keywords)
-    # 新增年份过滤：2018/01/01 到 2023/12/31
-    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&sort=pub_date&mindate=2018/01/01&maxdate=2023/12/31&email={Entrez_email}"
+    
+    # 动态计算近10年的年份范围（不使用datetime模块）
+    import datetime
+    current_year = datetime.datetime.now().year
+    start_year = current_year - 10
+    mindate = f"{start_year}/01/01"
+    maxdate = f"{current_year-1}/12/31"  # 搜索到去年年底
+    
+    # 构建搜索URL
+    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&sort=pub_date&mindate={mindate}&maxdate={maxdate}&email={Entrez_email}"
     
     # 网络重试机制
     max_retries = 3
@@ -367,17 +374,17 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
             # 限流优化
             time.sleep(0.5)
     
-    # 严格过滤逻辑：仅保留被引次数≥100的高影响力文献
+    # 过滤逻辑：仅保留被引次数≥50的高权威文献
     filtered_articles = []
     if get_citations and articles:
         for article in articles:
             citation_count = article.get('Cited_By_Count', 0)
-            # 严格标准：被引数必须≥100
-            if isinstance(citation_count, int) and citation_count >= 100:
+            # 严格标准：被引数必须≥50
+            if isinstance(citation_count, int) and citation_count >= 50:
                 filtered_articles.append(article)
             elif isinstance(citation_count, str):
                 try:
-                    if int(citation_count) >= 100:
+                    if int(citation_count) >= 50:
                         filtered_articles.append(article)
                 except ValueError:
                     pass
@@ -385,7 +392,7 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
         # 如果不获取引用信息，则不过滤
         filtered_articles = articles
     
-    print(f"严格过滤后剩余 {len(filtered_articles)} 篇高影响力文献（被引≥100次）")
+    print(f"严格过滤后剩余 {len(filtered_articles)} 篇高权威文献（被引≥50次）")
     return filtered_articles
 
 def get_node_size(citations):
