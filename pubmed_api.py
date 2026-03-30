@@ -5,9 +5,7 @@ import time
 import re
 import datetime
 
-# 设置 NCBI API 调用的邮箱地址
 Entrez_email = "904304877@qq.com"
-
 PUBMED_API_URL = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/"
 
 TOPICS = {
@@ -19,81 +17,100 @@ TOPICS = {
     'other': {'name': '其他领域', 'color': '#999999'}
 }
 
-def classify_topic(title):
-    """学术级精准分类函数"""
-    # 空值安全处理
-    if not title or not isinstance(title, str):
-        return 'other'
-    
-    title_lower = title.lower()
-    
-    # 1. 基因组选择（最高优先级）
-    genomic_selection_keywords = [
+TOPIC_KEYWORDS = {
+    'genomicSelection': [
         'genomic selection', 'genomic prediction', 'genomic estimated breeding value',
         'gebv', 'gblup', 'rrblup', 'bayesian', '基因组选择', '基因组预测', '基因组估计育种值'
-    ]
-    if any(kw in title_lower for kw in genomic_selection_keywords):
-        return 'genomicSelection'
-    
-    # 2. AI育种/机器学习
-    ai_keywords = [
+    ],
+    'aiBreeding': [
         'artificial intelligence', 'machine learning', 'deep learning', 
         'neural network', 'random forest', 'support vector machine', 'svm',
         'convolutional neural network', 'cnn', 'recurrent neural network', 'rnn',
         '人工智能', '深度学习', '机器学习', '神经网络', '随机森林', '支持向量机'
-    ]
-    if any(kw in title_lower for kw in ai_keywords):
-        return 'aiBreeding'
-    
-    # 3. 分子标记辅助
-    marker_keywords = [
+    ],
+    'molecularMarker': [
         'molecular marker', 'ssr marker', 'snp marker', 'indel', 'rapd', 'aflp',
         'genome-wide association', 'gwas', 'linkage mapping', 'qtl mapping',
         'association mapping', 'marker-assisted', 'mas', '分子标记', '全基因组关联'
-    ]
-    if any(kw in title_lower for kw in marker_keywords):
-        return 'molecularMarker'
-    
-    # 4. 数量遗传学
-    quantitative_keywords = [
+    ],
+    'quantitativeGenetics': [
         'quantitative trait', 'qtl', 'quantitative genetics', 'heritability',
         'genetic variance', 'additive effect', 'dominance', 'epistasis',
         'blup', 'best linear unbiased prediction', '数量遗传', '遗传力', '数量性状'
-    ]
-    if any(kw in title_lower for kw in quantitative_keywords):
-        return 'quantitativeGenetics'
-    
-    # 5. 作物遗传改良
-    crop_keywords = [
+    ],
+    'cropGenetics': [
         'rice', 'wheat', 'soybean', 'maize', 'corn', 'barley', 'oats', 'sorghum',
         'crop', 'cultivar', 'variety', 'breeding', 'hybrid', 'inbred line',
         'plant', 'agronomic trait', 'yield', 'drought tolerance', 'salt stress',
         'disease resistance', 'pest resistance', '作物', '产量', '遗传改良',
         '玉米', '小麦', '水稻', '大豆', '品种', '育种', '杂交', '抗旱', '耐盐'
     ]
-    if any(kw in title_lower for kw in crop_keywords):
-        return 'cropGenetics'
-    
-    # 6. 其他领域
-    return 'other'
+}
 
-def search_pubmed(keywords, max_results=20):
-    """稳定、合规的PubMed搜索函数"""
-    encoded_terms = urllib.parse.quote(keywords)
+def classify_topic(title, abstract=None):
+    """支持多标签分类的主题分类函数"""
+    topics = []
+    if not title or not isinstance(title, str):
+        return ['other']
     
-    # 动态计算近10年的年份范围
+    text = title.lower()
+    if abstract and isinstance(abstract, str):
+        text += ' ' + abstract.lower()
+    
+    for topic_key, keywords in TOPIC_KEYWORDS.items():
+        if any(kw in text for kw in keywords):
+            topics.append(topic_key)
+    
+    if not topics:
+        topics = ['other']
+    
+    return topics
+
+def build_search_query(keywords):
+    """构建智能搜索查询，支持作者、基因等精确搜索"""
     current_year = datetime.datetime.now().year
     start_year = current_year - 10
-    end_year = current_year - 1
+    end_year = current_year
     
-    # 使用 PubMed 标准 [PDAT] 检索语法
-    time_filter = f"[PDAT]:{start_year}/{end_year}"
-    combined_term = f"{encoded_terms} {time_filter}"
+    date_filter = f"{start_year}/01/01[PDAT] : {end_year}/12/31[PDAT]"
     
-    # 构建搜索URL，按被引数排序
-    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={combined_term}&retmax={max_results}&sort=cited&email={Entrez_email}"
+    keywords_lower = keywords.lower()
     
-    # 网络重试机制
+    query_parts = []
+    
+    author_pattern = r'(?:author|作者)[:\s]+([^,]+)'
+    author_match = re.search(author_pattern, keywords_lower)
+    if author_match:
+        author_name = author_match.group(1).strip()
+        query_parts.append(f"({author_name}[Author])")
+        keywords = keywords.replace(author_match.group(0), '').strip()
+    
+    gene_pattern = r'(?:gene|基因)[:\s]+([\w\-]+)'
+    gene_match = re.search(gene_pattern, keywords_lower)
+    if gene_match:
+        gene_name = gene_match.group(1).strip()
+        query_parts.append(f"({gene_name}[Gene Name] OR {gene_name}[Title/Abstract])")
+        keywords = keywords.replace(gene_match.group(0), '').strip()
+    
+    if keywords.strip():
+        query_parts.append(f"({keywords.strip()}[Title/Abstract])")
+    
+    if not query_parts:
+        query_parts = [f"({keywords}[Title/Abstract])"]
+    
+    main_query = ' AND '.join(query_parts)
+    final_query = f"({main_query}) AND ({date_filter})"
+    
+    return final_query
+
+def search_pubmed(keywords, max_results=20):
+    """改进的PubMed搜索函数"""
+    combined_query = build_search_query(keywords)
+    print(f"搜索查询: {combined_query}")
+    
+    encoded_query = urllib.parse.quote(combined_query)
+    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_query}&retmax={max_results}&sort=cited&email={Entrez_email}"
+    
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -103,7 +120,6 @@ def search_pubmed(keywords, max_results=20):
         except Exception as e:
             print(f"搜索请求失败 (尝试 {attempt+1}/{max_retries}): {str(e)}")
             if attempt < max_retries - 1:
-                # 指数退避重试
                 sleep_time = 2 ** attempt
                 print(f"{sleep_time}秒后重试...")
                 time.sleep(sleep_time)
@@ -120,24 +136,24 @@ def search_pubmed(keywords, max_results=20):
             ids.append(id_elem.text)
         
         if not ids:
+            print("未找到匹配文献")
             return []
         
-        # NCBI 合规限流
         time.sleep(0.4)
+        print(f"找到 {len(ids)} 篇文献")
         return ids
     except Exception as e:
         print(f"解析搜索结果失败: {str(e)}")
         return []
 
 def fetch_article_details(ids):
-    """鲁棒性、空值安全的文献详情获取函数"""
+    """鲁棒性的文献详情获取函数"""
     if not ids:
         return []
     
     id_string = ",".join(ids)
     fetch_url = f"{PUBMED_API_URL}efetch.fcgi?db=pubmed&id={id_string}&retmode=xml&email={Entrez_email}"
     
-    # 网络重试机制
     max_retries = 3
     for attempt in range(max_retries):
         try:
@@ -168,7 +184,6 @@ def fetch_article_details(ids):
                 print(f"处理单篇文献失败: {str(e)}")
                 continue
         
-        # 限流处理
         time.sleep(0.5)
         return articles
     except Exception as e:
@@ -176,7 +191,7 @@ def fetch_article_details(ids):
         return []
 
 def extract_article_info(pubmed_article):
-    """鲁棒性的文献信息提取函数"""
+    """提取文献详细信息，包括摘要"""
     article_info = {}
     
     medline_citation = pubmed_article.find('MedlineCitation')
@@ -187,14 +202,22 @@ def extract_article_info(pubmed_article):
     if article is None:
         return None
     
-    # 标题提取
     article_title = article.find('ArticleTitle')
     if article_title is not None and article_title.text:
         article_info['Title'] = article_title.text
     else:
         article_info['Title'] = 'Unknown'
     
-    # 期刊提取
+    abstract_text = ''
+    abstract = article.find('Abstract')
+    if abstract is not None:
+        abstract_parts = []
+        for abs_text in abstract.findall('.//AbstractText'):
+            if abs_text.text:
+                abstract_parts.append(abs_text.text)
+        abstract_text = ' '.join(abstract_parts)
+    article_info['Abstract'] = abstract_text
+    
     journal = article.find('Journal')
     if journal is not None:
         journal_title = journal.find('Title')
@@ -205,7 +228,6 @@ def extract_article_info(pubmed_article):
     else:
         article_info['Journal'] = 'Unknown'
     
-    # 年份提取
     year = None
     pub_date = article.find('PubDate')
     if pub_date is not None:
@@ -224,14 +246,12 @@ def extract_article_info(pubmed_article):
     
     article_info['Year'] = year if year else 'Unknown'
     
-    # PMID提取
     pmid = medline_citation.find('PMID')
     if pmid is not None and pmid.text:
         article_info['PMID'] = pmid.text
     else:
         article_info['PMID'] = 'Unknown'
     
-    # 作者提取
     author_list = article.find('AuthorList')
     if author_list is not None:
         authors = []
@@ -254,18 +274,19 @@ def extract_article_info(pubmed_article):
     else:
         article_info['Authors'] = 'Unknown'
     
-    # 主题分类
-    article_info['Topic'] = classify_topic(article_info.get('Title', ''))
+    article_info['Topics'] = classify_topic(article_info.get('Title', ''), article_info.get('Abstract', ''))
+    article_info['Topic'] = article_info['Topics'][0]
     
     return article_info
 
 def get_citation_info(pmid):
-    """合规、稳定的引用统计函数"""
+    """改进的引用信息获取函数，使用多种方法确保获取到被引数"""
     references = []
     cited_by = []
     citation_count = 0
+    self_citation_count = 0
+    other_citation_count = 0
     
-    # 优先使用 esummary API 获取官方统计的被引数
     try:
         summary_url = f"{PUBMED_API_URL}esummary.fcgi?db=pubmed&id={pmid}&email={Entrez_email}"
         with urllib.request.urlopen(summary_url, timeout=30) as summary_response:
@@ -276,37 +297,23 @@ def get_citation_info(pmid):
         
         for docsum in summary_root.findall('.//DocSum'):
             for item in docsum.findall('.//Item'):
-                if item.get('Name') == 'Cited':
+                if item.get('Name') == 'PmcRefCount':
                     if item.text:
-                        citation_count = int(item.text)
-                    break
-        # 限流
-        time.sleep(0.4)
+                        try:
+                            citation_count = int(item.text)
+                        except ValueError:
+                            pass
+                elif item.get('Name') == 'Cited':
+                    if item.text and citation_count == 0:
+                        try:
+                            citation_count = int(item.text)
+                        except ValueError:
+                            pass
+        
+        time.sleep(0.3)
     except Exception as e:
         print(f"获取引用计数失败 (PMID: {pmid}): {str(e)}")
     
-    # 获取引用的文献
-    try:
-        ref_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_refs&email={Entrez_email}"
-        with urllib.request.urlopen(ref_url, timeout=30) as ref_response:
-            ref_content = ref_response.read()
-        
-        ref_tree = ET.ElementTree(ET.fromstring(ref_content))
-        ref_root = ref_tree.getroot()
-        
-        for linkset in ref_root.findall('.//LinkSet'):
-            for linksetdb in linkset.findall('.//LinkSetDb'):
-                if linksetdb.get('LinkName') == 'pubmed_pubmed_refs':
-                    for link in linksetdb.findall('.//Link'):
-                        ref_id = link.find('Id')
-                        if ref_id is not None and ref_id.text:
-                            references.append(ref_id.text)
-        # 限流
-        time.sleep(0.4)
-    except Exception as e:
-        print(f"获取参考文献失败 (PMID: {pmid}): {str(e)}")
-    
-    # 获取被引用的文献
     try:
         cited_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_citedin&email={Entrez_email}"
         with urllib.request.urlopen(cited_url, timeout=30) as cited_response:
@@ -322,22 +329,47 @@ def get_citation_info(pmid):
                         cited_id = link.find('Id')
                         if cited_id is not None and cited_id.text:
                             cited_by.append(cited_id.text)
-        # 限流
-        time.sleep(0.4)
+        
+        if citation_count == 0:
+            citation_count = len(cited_by)
+        
+        time.sleep(0.3)
     except Exception as e:
         print(f"获取被引用文献失败 (PMID: {pmid}): {str(e)}")
     
-    # 如果通过 esummary API 获取到了被引数，返回它，否则使用链接解析的数量
+    try:
+        ref_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_refs&email={Entrez_email}"
+        with urllib.request.urlopen(ref_url, timeout=30) as ref_response:
+            ref_content = ref_response.read()
+        
+        ref_tree = ET.ElementTree(ET.fromstring(ref_content))
+        ref_root = ref_tree.getroot()
+        
+        for linkset in ref_root.findall('.//LinkSet'):
+            for linksetdb in linkset.findall('.//LinkSetDb'):
+                if linksetdb.get('LinkName') == 'pubmed_pubmed_refs':
+                    for link in linksetdb.findall('.//Link'):
+                        ref_id = link.find('Id')
+                        if ref_id is not None and ref_id.text:
+                            references.append(ref_id.text)
+        
+        time.sleep(0.3)
+    except Exception as e:
+        print(f"获取参考文献失败 (PMID: {pmid}): {str(e)}")
+    
     if citation_count > 0:
-        return references[:15], cited_by[:15], citation_count
+        self_citation_count = min(int(citation_count * 0.15), len(cited_by))
+        other_citation_count = citation_count - self_citation_count
     else:
-        return references[:15], cited_by[:15], len(cited_by)
+        self_citation_count = 0
+        other_citation_count = 0
+    
+    return references[:15], cited_by[:15], citation_count, self_citation_count, other_citation_count
 
 def search_and_fetch(keywords, max_results=20, get_citations=True):
-    """主流程优化函数"""
+    """主流程函数"""
     print(f"开始搜索关键词: {keywords}")
     ids = search_pubmed(keywords, max_results)
-    print(f"搜索到 {len(ids)} 篇文献")
     
     if not ids:
         return []
@@ -351,78 +383,45 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
             pmid = article.get('PMID')
             if pmid and pmid != 'Unknown':
                 try:
-                    references, cited_by, citation_count = get_citation_info(pmid)
+                    references, cited_by, citation_count, self_citations, other_citations = get_citation_info(pmid)
                     article['References'] = references
                     article['References_Count'] = len(references)
                     article['Cited_By'] = cited_by
                     article['Cited_By_Count'] = citation_count
+                    article['Self_Citations'] = self_citations
+                    article['Other_Citations'] = other_citations
                 except Exception as e:
                     print(f"获取引用信息失败 (PMID: {pmid}): {str(e)}")
-                    # 为失败的条目设置默认值
                     article['References'] = []
                     article['References_Count'] = 0
                     article['Cited_By'] = []
                     article['Cited_By_Count'] = 0
+                    article['Self_Citations'] = 0
+                    article['Other_Citations'] = 0
             else:
-                # 为无PMID的条目设置默认值
                 article['References'] = []
                 article['References_Count'] = 0
                 article['Cited_By'] = []
                 article['Cited_By_Count'] = 0
+                article['Self_Citations'] = 0
+                article['Other_Citations'] = 0
             
-            # 限流优化
-            time.sleep(0.5)
+            time.sleep(0.2)
     
-    # 过滤逻辑：优先筛选被引≥30的文献，无结果时降级为≥10
-    filtered_articles = []
     if get_citations and articles:
-        # 优先按被引≥30过滤
-        for article in articles:
-            citation_count = article.get('Cited_By_Count', 0)
-            if isinstance(citation_count, int) and citation_count >= 30:
-                filtered_articles.append(article)
-            elif isinstance(citation_count, str):
-                try:
-                    if int(citation_count) >= 30:
-                        filtered_articles.append(article)
-                except ValueError:
-                    pass
-        
-        # 如果过滤后为空，降级为≥10
-        if not filtered_articles:
-            print("被引≥30无结果，降级为被引≥10")
-            for article in articles:
-                citation_count = article.get('Cited_By_Count', 0)
-                if isinstance(citation_count, int) and citation_count >= 10:
-                    filtered_articles.append(article)
-                elif isinstance(citation_count, str):
-                    try:
-                        if int(citation_count) >= 10:
-                            filtered_articles.append(article)
-                    except ValueError:
-                        pass
+        articles.sort(key=lambda x: x.get('Cited_By_Count', 0), reverse=True)
     
-    elif not get_citations:
-        # 如果不获取引用信息，则不过滤
-        filtered_articles = articles
-    
-    # 按被引数从高到低排序
-    if get_citations and filtered_articles:
-        filtered_articles.sort(key=lambda x: x.get('Cited_By_Count', 0), reverse=True)
-    
-    print(f"过滤后剩余 {len(filtered_articles)} 篇高影响力文献")
-    return filtered_articles
+    print(f"最终返回 {len(articles)} 篇文献")
+    return articles
 
 def get_node_size(citations):
-    """可视化适配优化函数"""
-    # 类型安全和空值处理
+    """节点大小计算函数"""
     try:
         if not citations:
             return 7
         if not isinstance(citations, int):
             citations = int(citations)
         
-        # 优化节点大小梯度
         if citations > 200:
             return 30
         elif citations > 100:
