@@ -14,12 +14,13 @@ TOPICS = {
     'aiBreeding': {'name': '人工智能育种', 'color': '#0FC6C2'},
     'cropGenetics': {'name': '作物遗传改良', 'color': '#F7BA1E'},
     'molecularMarker': {'name': '分子标记辅助', 'color': '#F53F3F'},
-    'quantitativeGenetics': {'name': '数量遗传学', 'color': '#86909C'}
+    'quantitativeGenetics': {'name': '数量遗传学', 'color': '#86909C'},
+    'other': {'name': '其他领域', 'color': '#999999'}
 }
 
 def classify_topic(title):
     if not title:
-        return 'cropGenetics'
+        return 'other'
     title_lower = title.lower()
     if any(kw in title_lower for kw in ['genomic selection', 'genomic', 'gs ', '基因组选择']):
         return 'genomicSelection'
@@ -32,7 +33,7 @@ def classify_topic(title):
     elif any(kw in title_lower for kw in ['quantitative', 'qtl', 'heritability', '数量遗传', '遗传力']):
         return 'quantitativeGenetics'
     else:
-        return 'cropGenetics'
+        return 'other'
 
 def search_pubmed(keywords, max_results=20):
     encoded_terms = urllib.parse.quote(keywords)
