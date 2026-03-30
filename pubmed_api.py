@@ -152,7 +152,27 @@ def extract_article_info(pubmed_article):
 def get_citation_info(pmid):
     references = []
     cited_by = []
+    citation_count = 0
     
+    # 优先使用 esummary API 获取官方统计的被引数
+    try:
+        summary_url = f"{PUBMED_API_URL}esummary.fcgi?db=pubmed&id={pmid}&email={Entrez_email}"
+        with urllib.request.urlopen(summary_url, timeout=30) as summary_response:
+            summary_content = summary_response.read()
+        
+        summary_tree = ET.ElementTree(ET.fromstring(summary_content))
+        summary_root = summary_tree.getroot()
+        
+        for docsum in summary_root.findall('.//DocSum'):
+            for item in docsum.findall('.//Item'):
+                if item.get('Name') == 'Cited':
+                    if item.text:
+                        citation_count = int(item.text)
+                    break
+    except Exception:
+        pass
+    
+    # 获取引用的文献
     try:
         ref_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_refs&email={Entrez_email}"
         with urllib.request.urlopen(ref_url, timeout=30) as ref_response:
@@ -171,6 +191,7 @@ def get_citation_info(pmid):
     except Exception:
         pass
     
+    # 获取被引用的文献
     try:
         cited_url = f"{PUBMED_API_URL}elink.fcgi?dbfrom=pubmed&db=pubmed&id={pmid}&linkname=pubmed_pubmed_citedin&email={Entrez_email}"
         with urllib.request.urlopen(cited_url, timeout=30) as cited_response:
@@ -189,7 +210,11 @@ def get_citation_info(pmid):
     except Exception:
         pass
     
-    return references, cited_by
+    # 如果通过 esummary API 获取到了被引数，返回它，否则使用链接解析的数量
+    if citation_count > 0:
+        return references, cited_by, citation_count
+    else:
+        return references, cited_by, len(cited_by)
 
 def search_and_fetch(keywords, max_results=20, get_citations=True):
     ids = search_pubmed(keywords, max_results)
@@ -203,11 +228,11 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
         for i, article in enumerate(articles):
             pmid = article.get('PMID')
             if pmid:
-                references, cited_by = get_citation_info(pmid)
+                references, cited_by, citation_count = get_citation_info(pmid)
                 article['References'] = references[:15]
                 article['References_Count'] = len(references)
                 article['Cited_By'] = cited_by[:15]
-                article['Cited_By_Count'] = len(cited_by)
+                article['Cited_By_Count'] = citation_count
                 if i < len(articles) - 1:
                     time.sleep(0.3)
     
