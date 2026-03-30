@@ -3,6 +3,7 @@ import streamlit.components.v1 as components
 import tempfile
 import os
 import json
+import random
 
 from pubmed_api import TOPICS, get_node_size, classify_topic, search_and_fetch
 from network_template import generate_network_html
@@ -242,6 +243,7 @@ def setup_page():
             border-radius: 12px;
             font-size: 12px;
             margin-top: 8px;
+            margin-right: 6px;
             font-weight: 500;
             color: white;
         }
@@ -325,6 +327,7 @@ def setup_page():
     </style>
     """, unsafe_allow_html=True)
 
+
 def build_network_data(articles):
     paper_map = {}
     for article in articles:
@@ -394,7 +397,7 @@ def build_network_data(articles):
     
     return nodes, edges, core_pmids
 
-def render_paper_card(article, is_core=False, topic_info=None):
+def render_paper_card(article, is_core=False, topic_info_list=None):
     css_class = "core-paper" if is_core else "normal-paper"
     title = article.get('Title', 'N/A')
     authors = article.get('Authors', 'Unknown')
@@ -402,12 +405,28 @@ def render_paper_card(article, is_core=False, topic_info=None):
     journal = article.get('Journal', 'N/A')
     pmid = article.get('PMID', 'N/A')
     citations = article.get('Cited_By_Count', 0)
-    topic = article.get('Topic', 'cropGenetics')
+    self_citations = article.get('Self_Citations', 0)
+    other_citations = article.get('Other_Citations', 0)
+    topics = article.get('Topics', [article.get('Topic', 'cropGenetics')])
     
-    if topic_info is None:
-        topic_info = TOPICS.get(topic, {'name': '其他', 'color': '#888888'})
+    if topic_info_list is None:
+        topic_info_list = []
+        for topic_key in topics:
+            topic_info_list.append(TOPICS.get(topic_key, {'name': '其他', 'color': '#888888'}))
     
     core_badge = '<span class="citation-badge" style="background: #FFD93D; color: #000;">核心文献</span>' if is_core else ''
+    
+    topic_badges = ''
+    for topic_info in topic_info_list:
+        topic_badges += f'<span class="topic-badge" style="background: {topic_info["color"]}; color: #000;">{topic_info["name"]}</span>'
+    
+    citation_level = ''
+    if citations >= 50:
+        citation_level = '<span style="color:#F53F3F;font-weight:600;">高被引</span>'
+    elif citations >= 20:
+        citation_level = '<span style="color:#F7BA1E;font-weight:600;">中高被引</span>'
+    elif citations >= 10:
+        citation_level = '<span style="color:#0FC6C2;font-weight:600;">有效被引</span>'
     
     html = f'''
     <div class="{css_class}">
@@ -415,9 +434,10 @@ def render_paper_card(article, is_core=False, topic_info=None):
         <div class="paper-meta">
             <strong>作者:</strong> {authors}<br>
             <strong>期刊:</strong> {journal}<br>
-            <strong>年份:</strong> {year} | <strong>PMID:</strong> {pmid} | <strong>被引:</strong> {citations}
+            <strong>年份:</strong> {year} | <strong>PMID:</strong> {pmid}<br>
+            <strong>总被引:</strong> {citations} ({citation_level}) | <strong>自引:</strong> {self_citations} | <strong>他引:</strong> {other_citations}
         </div>
-        <span class="topic-badge" style="background: {topic_info['color']}; color: #000;">{topic_info['name']}</span>
+        {topic_badges}
     </div>
     '''
     return html
@@ -432,8 +452,8 @@ def main():
         st.header("搜索设置")
         keywords = st.text_input(
             "输入搜索关键词",
-            placeholder="例如: genomic selection breeding",
-            help="输入英文关键词，多个关键词用空格分隔"
+            placeholder="例如: genomic selection breeding 或 author:Zhang gene:BRCA1",
+            help="支持：关键词、author:作者名、gene:基因名等精确搜索"
         )
         
         max_results = st.slider(
@@ -483,7 +503,6 @@ def main():
     core_pmids = st.session_state.core_pmids
     
     if articles:
-        # 显示文献列表
         st.subheader("文献列表")
         
         core_articles = [a for a in articles if a.get('PMID') in core_pmids]
@@ -492,16 +511,17 @@ def main():
         if core_articles:
             st.markdown("#### 核心文献（高被引）")
             for article in core_articles:
-                topic_info = TOPICS.get(article.get('Topic', 'cropGenetics'), {'name': '其他', 'color': '#888888'})
-                st.markdown(render_paper_card(article, is_core=True, topic_info=topic_info), unsafe_allow_html=True)
+                topic_keys = article.get('Topics', [article.get('Topic', 'cropGenetics')])
+                topic_info_list = [TOPICS.get(tk, {'name': '其他', 'color': '#888888'}) for tk in topic_keys]
+                st.markdown(render_paper_card(article, is_core=True, topic_info_list=topic_info_list), unsafe_allow_html=True)
         
         if other_articles:
             with st.expander("查看其他文献", expanded=False):
                 for article in other_articles:
-                    topic_info = TOPICS.get(article.get('Topic', 'cropGenetics'), {'name': '其他', 'color': '#888888'})
-                    st.markdown(render_paper_card(article, is_core=False, topic_info=topic_info), unsafe_allow_html=True)
+                    topic_keys = article.get('Topics', [article.get('Topic', 'cropGenetics')])
+                    topic_info_list = [TOPICS.get(tk, {'name': '其他', 'color': '#888888'}) for tk in topic_keys]
+                    st.markdown(render_paper_card(article, is_core=False, topic_info_list=topic_info_list), unsafe_allow_html=True)
         
-        # 显示引用网络
         st.subheader("引用网络可视化")
         
         nodes, edges, _ = build_network_data(articles)
@@ -511,29 +531,17 @@ def main():
             edge_count = len(edges)
             core_count = len([n for n in nodes if n['isCore']])
             
-            # 生成网络可视化的 HTML 内容
             html_content = generate_network_html(nodes, edges, node_count, edge_count, core_count)
             
-            # 创建临时文件来存储 HTML 内容
-            # tempfile.NamedTemporaryFile 会自动处理跨平台路径问题
-            # delete=False 表示文件关闭后不自动删除，我们需要手动删除
-            # suffix='.html' 指定文件扩展名
-            # encoding='utf-8' 确保正确处理中文字符
             with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
                 f.write(html_content)
                 temp_file = f.name
             
             try:
-                # 读取临时文件内容
-                # 使用 encoding='utf-8' 确保正确读取中文字符
                 with open(temp_file, 'r', encoding='utf-8') as f:
                     html_content = f.read()
-                # 在 Streamlit 中渲染 HTML 内容
                 components.html(html_content, height=700, scrolling=False)
             finally:
-                # 清理临时文件
-                # 使用 os.path.exists() 检查文件是否存在（跨平台兼容）
-                # 使用 os.unlink() 删除文件（跨平台兼容）
                 if os.path.exists(temp_file):
                     os.unlink(temp_file)
         else:
@@ -547,7 +555,7 @@ def main():
                     <div class="feature-icon">1</div>
                     <div class="feature-text">
                         <h4>输入关键词</h4>
-                        <p>在左侧输入框中输入英文关键词，多个关键词用空格分隔</p>
+                        <p>支持：普通关键词、author:作者名、gene:基因名等精确搜索</p>
                     </div>
                 </div>
                 <div class="feature-item">
@@ -594,8 +602,8 @@ def main():
                 <div class="feature-item">
                     <div class="feature-icon">●</div>
                     <div class="feature-text">
-                        <h4>自动获取引用关系</h4>
-                        <p>智能分析文献间的引用和被引用关系</p>
+                        <h4>真实引用数据</h4>
+                        <p>从PubMed获取真实被引数据，区分自引和他引</p>
                     </div>
                 </div>
                 <div class="feature-item">
@@ -608,8 +616,8 @@ def main():
                 <div class="feature-item">
                     <div class="feature-icon">●</div>
                     <div class="feature-text">
-                        <h4>按研究主题分类</h4>
-                        <p>自动识别研究主题并使用莫兰迪色系着色</p>
+                        <h4>多主题标签</h4>
+                        <p>支持一篇文献多个主题分类标签</p>
                     </div>
                 </div>
                 <div class="feature-item">
