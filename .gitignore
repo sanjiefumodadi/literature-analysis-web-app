@@ -1,0 +1,49 @@
+# Python 缓存与虚拟环境
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.venv/
+venv/
+env/
+
+# Streamlit 临时文件与配置
+.streamlit/
+*.tmp
+*.temp
+
+# 数据/图片/日志/报告大文件（避免仓库臃肿）
+*.png
+*.jpg
+*.jpeg
+*.svg
+*.pdf
+*.csv
+*.log
+*.md
+*.html
+output.log/
+output/
+
+# 系统文件
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# 本地配置与密钥
+secrets.json
+config.ini
+# 忽略运行时生成的临时数据文件
+*.xml
+*.json
+*.txt
+*.log
+*.csv
+*.html
+output/
+temp/
+# 永久忽略大体积分析图片文件夹，防止误传
+File_analysis_*/**
+*.tiff
+*.tif
