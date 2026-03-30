@@ -26,7 +26,7 @@ def classify_topic(title):
         return 'genomicSelection'
     elif any(kw in title_lower for kw in ['ai', 'artificial intelligence', 'machine learning', 'deep learning', 'neural', '人工智能', '深度学习']):
         return 'aiBreeding'
-    elif any(kw in title_lower for kw in ['crop', 'plant', 'yield', '作物', '产量', '遗传改良']):
+    elif any(kw in title_lower for kw in ['rice', 'wheat', 'soybean', 'crop', 'plant', 'yield', '作物', '产量', '遗传改良', '玉米', '小麦', '水稻', '大豆']):
         return 'cropGenetics'
     elif any(kw in title_lower for kw in ['molecular marker', 'marker', 'ssr', 'snp', '分子标记']):
         return 'molecularMarker'
@@ -37,7 +37,7 @@ def classify_topic(title):
 
 def search_pubmed(keywords, max_results=20):
     encoded_terms = urllib.parse.quote(keywords)
-    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&sort=cited&email={Entrez_email}"
+    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&sort=cited&mindate=2010/01/01&email={Entrez_email}"
     
     try:
         with urllib.request.urlopen(esearch_url, timeout=30) as response:
@@ -237,7 +237,17 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
                 if i < len(articles) - 1:
                     time.sleep(0.3)
     
-    return articles
+    # 过滤被引数≥10的文献
+    filtered_articles = []
+    for article in articles:
+        if get_citations:
+            citation_count = article.get('Cited_By_Count', 0)
+            if citation_count >= 10:
+                filtered_articles.append(article)
+        else:
+            filtered_articles.append(article)
+    
+    return filtered_articles
 
 def get_node_size(citations):
     if citations > 100:
