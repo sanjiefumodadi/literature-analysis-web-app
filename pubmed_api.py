@@ -36,7 +36,7 @@ def classify_topic(title):
 
 def search_pubmed(keywords, max_results=20):
     encoded_terms = urllib.parse.quote(keywords)
-    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&email={Entrez_email}"
+    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&sort=cited&email={Entrez_email}"
     
     try:
         with urllib.request.urlopen(esearch_url, timeout=30) as response:
