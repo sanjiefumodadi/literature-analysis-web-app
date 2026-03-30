@@ -3,9 +3,8 @@ import streamlit.components.v1 as components
 import tempfile
 import os
 import json
-import random
 
-from pubmed_api import TOPICS, get_node_size, classify_topic
+from pubmed_api import TOPICS, get_node_size, classify_topic, search_and_fetch
 from network_template import generate_network_html
 
 def setup_page():
@@ -326,84 +325,6 @@ def setup_page():
     </style>
     """, unsafe_allow_html=True)
 
-def load_local_literature(max_results=20):
-    """加载本地文献数据并添加合理的引用关系"""
-    
-    # 获取当前脚本所在目录的绝对路径
-    # __file__ 是当前 Python 文件的路径
-    # os.path.dirname() 获取文件所在目录
-    # os.path.abspath() 转换为绝对路径
-    current_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    # 构建数据文件的跨平台路径
-    # os.path.join() 会根据操作系统自动使用正确的路径分隔符（Windows 用 \，Linux/Mac 用 /）
-    # 这样可以确保代码在 Windows 和 Linux 上都能正常运行
-    literature_file = os.path.join(current_dir, 'breeding_literature', 'all_breeding_literature.json')
-    
-    # 读取本地 JSON 文件
-    # 使用 encoding='utf-8' 确保能正确处理中文和特殊字符
-    with open(literature_file, 'r', encoding='utf-8') as f:
-        articles = json.load(f)
-    
-    # 限制文献数量
-    if max_results < len(articles):
-        articles = articles[:max_results]
-    
-    # 为每篇文献添加主题分类和作者信息
-    for article in articles:
-        # 添加主题分类
-        if 'Topic' not in article:
-            article['Topic'] = classify_topic(article.get('Title', ''))
-        
-        # 添加作者信息（模拟）
-        if 'Authors' not in article:
-            authors = [f'Researcher {chr(65 + i)}' for i in range(random.randint(2, 5))]
-            if len(authors) > 3:
-                article['Authors'] = ', '.join(authors[:3]) + ' et al.'
-            else:
-                article['Authors'] = ', '.join(authors)
-        
-        # 添加合理的引用次数（模拟）
-        if 'Cited_By_Count' not in article or article['Cited_By_Count'] == 0:
-            # 基于年份的引用次数模拟
-            year = int(article.get('Year', 2023))
-            base_citations = (2026 - year) * 10
-            article['Cited_By_Count'] = base_citations + random.randint(0, 50)
-        
-        if 'References_Count' not in article or article['References_Count'] == 0:
-            article['References_Count'] = random.randint(5, 30)
-    
-    # 生成引用关系
-    pmids = [article['PMID'] for article in articles]
-    pmid_to_index = {pmid: i for i, pmid in enumerate(pmids)}
-    
-    for article in articles:
-        # 生成引用的文献
-        references = []
-        cited_by = []
-        
-        # 每篇文献引用 3-5 篇其他文献（减少引用数量）
-        num_references = random.randint(3, 5)
-        for _ in range(num_references):
-            ref_idx = random.randint(0, len(pmids) - 1)
-            ref_pmid = pmids[ref_idx]
-            if ref_pmid != article['PMID']:
-                references.append(ref_pmid)
-        
-        article['References'] = references
-        
-        # 生成被引用的文献（减少被引用数量）
-        num_cited_by = min(article['Cited_By_Count'], 8)
-        for _ in range(num_cited_by):
-            cite_idx = random.randint(0, len(pmids) - 1)
-            cite_pmid = pmids[cite_idx]
-            if cite_pmid != article['PMID']:
-                cited_by.append(cite_pmid)
-        
-        article['Cited_By'] = cited_by
-    
-    return articles
-
 def build_network_data(articles):
     paper_map = {}
     for article in articles:
@@ -542,18 +463,21 @@ def main():
         st.session_state.core_pmids = set()
     
     if search_btn:
-        with st.spinner("正在加载本地文献数据..."):
+        with st.spinner("正在调用 PubMed API 搜索文献..."):
             try:
-                articles = load_local_literature(max_results=max_results)
-                if articles:
-                    st.session_state.articles = articles
-                    _, _, core_pmids = build_network_data(articles)
-                    st.session_state.core_pmids = core_pmids
-                    st.success(f"成功加载 {len(articles)} 篇文献！")
+                if not keywords:
+                    st.warning("请输入搜索关键词！")
                 else:
-                    st.warning("未找到文献数据。")
+                    articles = search_and_fetch(keywords, max_results=max_results)
+                    if articles:
+                        st.session_state.articles = articles
+                        _, _, core_pmids = build_network_data(articles)
+                        st.session_state.core_pmids = core_pmids
+                        st.success(f"成功获取 {len(articles)} 篇文献！")
+                    else:
+                        st.warning("未找到匹配的文献。")
             except Exception as e:
-                st.error(f"加载出错: {str(e)}")
+                st.error(f"搜索出错: {str(e)}")
     
     articles = st.session_state.articles
     core_pmids = st.session_state.core_pmids
