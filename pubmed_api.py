@@ -81,8 +81,8 @@ def classify_topic(title):
 def search_pubmed(keywords, max_results=20):
     """稳定、合规的PubMed搜索函数"""
     encoded_terms = urllib.parse.quote(keywords)
-    # 移除硬编码日期限制，默认按发表时间排序
-    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&sort=pub_date&email={Entrez_email}"
+    # 新增年份过滤：2018/01/01 到 2023/12/31
+    esearch_url = f"{PUBMED_API_URL}esearch.fcgi?db=pubmed&term={encoded_terms}&retmax={max_results}&sort=pub_date&mindate=2018/01/01&maxdate=2023/12/31&email={Entrez_email}"
     
     # 网络重试机制
     max_retries = 3
