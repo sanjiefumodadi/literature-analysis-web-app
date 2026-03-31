@@ -5,7 +5,7 @@ import os
 import json
 import random
 
-from pubmed_api import TOPICS, get_node_size, classify_topic, search_and_fetch
+from pubmed_api import TOPICS, get_node_size, classify_topic, search_and_fetch, get_citation_level
 from network_template import generate_network_html
 
 def setup_page():
@@ -340,11 +340,18 @@ def build_network_data(articles):
     all_pmids = set(paper_map.keys())
     
     cited_counts = {}
+    external_citations = {}
     for pmid, paper in paper_map.items():
         cited_by = paper.get('Cited_By', [])
+        internal_count = 0
+        external_count = 0
         for cited_pmid in cited_by:
             if cited_pmid in all_pmids:
                 cited_counts[cited_pmid] = cited_counts.get(cited_pmid, 0) + 1
+                internal_count += 1
+            else:
+                external_count += 1
+        external_citations[pmid] = external_count
     
     for pmid, paper in paper_map.items():
         citations = paper.get('Cited_By_Count', 0)
@@ -358,6 +365,7 @@ def build_network_data(articles):
             'year': paper.get('Year', 'N/A'),
             'citations': citations,
             'topic': paper.get('Topic', 'cropGenetics'),
+            'topics': paper.get('Topics', [paper.get('Topic', 'cropGenetics')]),
             'isCore': False,
             'size': get_node_size(citations)
         })
@@ -395,7 +403,9 @@ def build_network_data(articles):
                         'strength': 0.6
                     })
     
-    return nodes, edges, core_pmids
+    total_external = sum(external_citations.values())
+    
+    return nodes, edges, core_pmids, total_external
 
 def render_paper_card(article, is_core=False, topic_info_list=None):
     css_class = "core-paper" if is_core else "normal-paper"
@@ -491,7 +501,7 @@ def main():
                     articles = search_and_fetch(keywords, max_results=max_results)
                     if articles:
                         st.session_state.articles = articles
-                        _, _, core_pmids = build_network_data(articles)
+                        _, _, core_pmids, _ = build_network_data(articles)
                         st.session_state.core_pmids = core_pmids
                         st.success(f"成功获取 {len(articles)} 篇文献！")
                     else:
@@ -524,14 +534,14 @@ def main():
         
         st.subheader("引用网络可视化")
         
-        nodes, edges, _ = build_network_data(articles)
+        nodes, edges, _, total_external = build_network_data(articles)
         
         if nodes:
             node_count = len(nodes)
             edge_count = len(edges)
             core_count = len([n for n in nodes if n['isCore']])
             
-            html_content = generate_network_html(nodes, edges, node_count, edge_count, core_count)
+            html_content = generate_network_html(nodes, edges, node_count, edge_count, core_count, total_external)
             
             with tempfile.NamedTemporaryFile(mode='w', suffix='.html', delete=False, encoding='utf-8') as f:
                 f.write(html_content)
