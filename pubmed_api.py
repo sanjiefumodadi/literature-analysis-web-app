@@ -48,7 +48,6 @@ TOPIC_KEYWORDS = {
 }
 
 def classify_topic(title, abstract=None):
-    """支持多标签分类的主题分类函数"""
     topics = []
     if not title or not isinstance(title, str):
         return ['other']
@@ -67,10 +66,9 @@ def classify_topic(title, abstract=None):
     return topics
 
 def build_search_query(keywords):
-    """构建智能搜索查询，支持作者、基因等精确搜索"""
     current_year = datetime.datetime.now().year
     start_year = current_year - 10
-    end_year = current_year
+    end_year = current_year - 1
     
     date_filter = f"{start_year}/01/01[PDAT] : {end_year}/12/31[PDAT]"
     
@@ -104,7 +102,6 @@ def build_search_query(keywords):
     return final_query
 
 def search_pubmed(keywords, max_results=20):
-    """改进的PubMed搜索函数"""
     combined_query = build_search_query(keywords)
     print(f"搜索查询: {combined_query}")
     
@@ -147,7 +144,6 @@ def search_pubmed(keywords, max_results=20):
         return []
 
 def fetch_article_details(ids):
-    """鲁棒性的文献详情获取函数"""
     if not ids:
         return []
     
@@ -191,7 +187,6 @@ def fetch_article_details(ids):
         return []
 
 def extract_article_info(pubmed_article):
-    """提取文献详细信息，包括摘要"""
     article_info = {}
     
     medline_citation = pubmed_article.find('MedlineCitation')
@@ -253,8 +248,12 @@ def extract_article_info(pubmed_article):
         article_info['PMID'] = 'Unknown'
     
     author_list = article.find('AuthorList')
+    authors = []
+    authors_full = []
+    first_author_lastname = None
+    all_author_lastnames = []
+    
     if author_list is not None:
-        authors = []
         for author in author_list.findall('Author'):
             last_name = author.find('LastName')
             fore_name = author.find('ForeName')
@@ -263,6 +262,10 @@ def extract_article_info(pubmed_article):
                 if fore_name is not None and fore_name.text:
                     author_name = f"{last_name.text} {fore_name.text[0] if fore_name.text else ''}"
                 authors.append(author_name)
+                authors_full.append(author_name)
+                all_author_lastnames.append(last_name.text.lower())
+                if first_author_lastname is None:
+                    first_author_lastname = last_name.text.lower()
         
         if authors:
             if len(authors) > 3:
@@ -274,18 +277,55 @@ def extract_article_info(pubmed_article):
     else:
         article_info['Authors'] = 'Unknown'
     
+    article_info['Authors_Full'] = authors_full
+    article_info['First_Author_Lastname'] = first_author_lastname
+    article_info['All_Author_Lastnames'] = all_author_lastnames
+    
     article_info['Topics'] = classify_topic(article_info.get('Title', ''), article_info.get('Abstract', ''))
     article_info['Topic'] = article_info['Topics'][0]
     
     return article_info
 
-def get_citation_info(pmid):
-    """改进的引用信息获取函数，使用多种方法确保获取到被引数"""
+def calculate_self_other_citations(article, cited_by_pmids, all_articles_map):
+    self_citation_count = 0
+    other_citation_count = 0
+    
+    if not cited_by_pmids:
+        return 0, 0
+    
+    article_authors = article.get('All_Author_Lastnames', [])
+    first_author = article.get('First_Author_Lastname', '')
+    
+    if not article_authors:
+        return 0, len(cited_by_pmids)
+    
+    for cited_pmid in cited_by_pmids:
+        if cited_pmid in all_articles_map:
+            citing_article = all_articles_map[cited_pmid]
+            citing_authors = citing_article.get('All_Author_Lastnames', [])
+            
+            if citing_authors:
+                has_overlap = False
+                for citing_author in citing_authors:
+                    if citing_author in article_authors:
+                        has_overlap = True
+                        break
+                
+                if has_overlap:
+                    self_citation_count += 1
+                else:
+                    other_citation_count += 1
+            else:
+                other_citation_count += 1
+        else:
+            other_citation_count += 1
+    
+    return self_citation_count, other_citation_count
+
+def get_citation_info(pmid, article=None, all_articles_map=None):
     references = []
     cited_by = []
     citation_count = 0
-    self_citation_count = 0
-    other_citation_count = 0
     
     try:
         summary_url = f"{PUBMED_API_URL}esummary.fcgi?db=pubmed&id={pmid}&email={Entrez_email}"
@@ -357,17 +397,20 @@ def get_citation_info(pmid):
     except Exception as e:
         print(f"获取参考文献失败 (PMID: {pmid}): {str(e)}")
     
-    if citation_count > 0:
-        self_citation_count = min(int(citation_count * 0.15), len(cited_by))
-        other_citation_count = citation_count - self_citation_count
+    self_citation_count = 0
+    other_citation_count = 0
+    
+    if article and all_articles_map:
+        self_citation_count, other_citation_count = calculate_self_other_citations(
+            article, cited_by, all_articles_map
+        )
     else:
-        self_citation_count = 0
-        other_citation_count = 0
+        if citation_count > 0:
+            other_citation_count = citation_count
     
     return references[:15], cited_by[:15], citation_count, self_citation_count, other_citation_count
 
 def search_and_fetch(keywords, max_results=20, get_citations=True):
-    """主流程函数"""
     print(f"开始搜索关键词: {keywords}")
     ids = search_pubmed(keywords, max_results)
     
@@ -377,13 +420,17 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
     articles = fetch_article_details(ids)
     print(f"成功获取 {len(articles)} 篇文献详情")
     
+    all_articles_map = {a.get('PMID'): a for a in articles if a.get('PMID')}
+    
     if get_citations:
         print("开始获取引用信息...")
         for i, article in enumerate(articles):
             pmid = article.get('PMID')
             if pmid and pmid != 'Unknown':
                 try:
-                    references, cited_by, citation_count, self_citations, other_citations = get_citation_info(pmid)
+                    references, cited_by, citation_count, self_citations, other_citations = get_citation_info(
+                        pmid, article, all_articles_map
+                    )
                     article['References'] = references
                     article['References_Count'] = len(references)
                     article['Cited_By'] = cited_by
@@ -414,8 +461,17 @@ def search_and_fetch(keywords, max_results=20, get_citations=True):
     print(f"最终返回 {len(articles)} 篇文献")
     return articles
 
+def get_citation_level(citations):
+    if citations >= 50:
+        return 'high', '高被引', '#F53F3F'
+    elif citations >= 20:
+        return 'medium_high', '中高被引', '#F7BA1E'
+    elif citations >= 10:
+        return 'valid', '有效被引', '#0FC6C2'
+    else:
+        return 'low', '无被引', '#86909C'
+
 def get_node_size(citations):
-    """节点大小计算函数"""
     try:
         if not citations:
             return 7
