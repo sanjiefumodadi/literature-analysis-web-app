@@ -1,19 +1,19 @@
 import json
 
 TOPICS = {
-    'genomicSelection': {'name': '基因组选择', 'color': '#722ED1'},
-    'aiBreeding': {'name': '人工智能育种', 'color': '#0FC6C2'},
-    'cropGenetics': {'name': '作物遗传改良', 'color': '#F7BA1E'},
-    'molecularMarker': {'name': '分子标记辅助', 'color': '#F53F3F'},
-    'quantitativeGenetics': {'name': '数量遗传学', 'color': '#86909C'},
-    'other': {'name': '其他领域', 'color': '#999999'}
+    'genomicSelection': {'name': '基因组选择', 'color': '#FFD93D'},
+    'aiBreeding': {'name': '人工智能育种', 'color': '#6BCB77'},
+    'cropGenetics': {'name': '作物遗传改良', 'color': '#4D96FF'},
+    'molecularMarker': {'name': '分子标记辅助', 'color': '#FF6B6B'},
+    'quantitativeGenetics': {'name': '数量遗传学', 'color': '#C9B1FF'}
 }
 
-def generate_network_html(nodes, edges, node_count, edge_count, core_count, external_count=0):
+def generate_network_html(nodes, edges, node_count, edge_count, core_count):
     topics_json = json.dumps(TOPICS, ensure_ascii=False)
     nodes_json = json.dumps(nodes, ensure_ascii=False)
     edges_json = json.dumps(edges, ensure_ascii=False)
     
+    # 完全复刻第二张图的HTML结构和样式
     html = '''<!DOCTYPE html>
 <html lang="zh-CN">
 <head>
@@ -122,7 +122,6 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             border-radius: 12px;
             font-size: 11px;
             margin-top: 6px;
-            margin-right: 4px;
         }
         
         #legend {
@@ -244,36 +243,35 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             <p id="tt-year"></p>
             <p>被引次数: <span id="tt-citations" class="citations"></span></p>
             <p>PMID: <span id="tt-pmid"></span></p>
-            <div id="tt-topics"></div>
+            <span id="tt-topic" class="topic"></span>
         </div>
         
         <div id="stats">
             <div>文献总数: <span id="node-count">''' + str(node_count) + '''</span></div>
             <div>引用关系: <span id="edge-count">''' + str(edge_count) + '''</span></div>
             <div>核心文献: <span id="core-count">''' + str(core_count) + '''</span></div>
-            <div>外部引用: <span id="external-count">''' + str(external_count) + '''</span></div>
         </div>
         
         <div id="legend">
             <h3>研究主题</h3>
             <div class="legend-item">
-                <div class="legend-color" style="background: #722ED1;"></div>
+                <div class="legend-color" style="background: #FFD93D;"></div>
                 <span>基因组选择</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background: #0FC6C2;"></div>
+                <div class="legend-color" style="background: #6BCB77;"></div>
                 <span>人工智能育种</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background: #F7BA1E;"></div>
+                <div class="legend-color" style="background: #4D96FF;"></div>
                 <span>作物遗传改良</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background: #F53F3F;"></div>
+                <div class="legend-color" style="background: #FF6B6B;"></div>
                 <span>分子标记辅助</span>
             </div>
             <div class="legend-item">
-                <div class="legend-color" style="background: #86909C;"></div>
+                <div class="legend-color" style="background: #C9B1FF;"></div>
                 <span>数量遗传学</span>
             </div>
             <div style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;">
@@ -301,53 +299,36 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
     </div>
 
     <script>
+        // 主题配置
         const topics = ''' + topics_json + ''';
         
+        // 网络数据
         const data = {
             nodes: ''' + nodes_json + ''',
             edges: ''' + edges_json + '''
         };
         
+        // 计算节点大小
         const getNodeSize = (citations) => {
-            try {
-                if (!citations) return 7;
-                let c = citations;
-                if (typeof c === 'string') {
-                    c = parseInt(c, 10);
-                }
-                if (isNaN(c)) return 7;
-                
-                if (c > 200) return 30;
-                if (c > 100) return 25;
-                if (c > 50) return 20;
-                if (c > 20) return 15;
-                if (c > 10) return 12;
-                return 7;
-            } catch (e) {
-                return 7;
-            }
+            if (citations > 100) return 25;
+            if (citations > 50) return 18;
+            if (citations > 20) return 12;
+            return 7;
         };
         
+        // 计算连线粗细
         const getLinkWidth = (strength) => {
             return strength * 2 + 0.5;
         };
         
-        const getNodeColor = (d) => {
-            let topicKey = 'other';
-            if (d.topics && Array.isArray(d.topics) && d.topics.length > 0) {
-                topicKey = d.topics[0];
-            } else if (d.topic) {
-                topicKey = d.topic;
-            }
-            return topics[topicKey] ? topics[topicKey].color : '#999999';
-        };
-        
+        // 设置SVG
         const svg = d3.select('#graph');
         const width = document.getElementById('container').offsetWidth;
         const height = document.getElementById('container').offsetHeight;
         
         svg.attr('width', width).attr('height', height);
         
+        // 创建缩放行为
         const g = svg.append('g');
         
         const zoom = d3.zoom()
@@ -358,6 +339,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
         
         svg.call(zoom);
         
+        // 创建力导向模拟
         const simulation = d3.forceSimulation(data.nodes)
             .force('link', d3.forceLink(data.edges)
                 .id(d => d.id)
@@ -371,6 +353,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             .force('x', d3.forceX(width / 2).strength(0.03))
             .force('y', d3.forceY(height / 2).strength(0.03));
         
+        // 绘制连线
         const link = g.append('g')
             .selectAll('line')
             .data(data.edges)
@@ -380,6 +363,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             .attr('stroke', '#5a6a8a')
             .attr('stroke-width', d => getLinkWidth(d.strength));
         
+        // 绘制节点
         const node = g.append('g')
             .selectAll('circle')
             .data(data.nodes)
@@ -387,7 +371,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             .append('circle')
             .attr('class', d => `node ${d.isCore ? 'pulse' : ''}`)
             .attr('r', d => getNodeSize(d.citations))
-            .attr('fill', d => getNodeColor(d))
+            .attr('fill', d => topics[d.topic].color)
             .attr('stroke', d => d.isCore ? '#fff' : 'rgba(255,255,255,0.3)')
             .attr('stroke-width', d => d.isCore ? 3 : 1)
             .call(d3.drag()
@@ -395,6 +379,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
                 .on('drag', dragged)
                 .on('end', dragended));
         
+        // 添加标签（仅核心节点和高度被引节点）
         const label = g.append('g')
             .selectAll('text')
             .data(data.nodes.filter(d => d.isCore || d.citations > 60))
@@ -405,6 +390,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             .attr('dy', d => getNodeSize(d.citations) + 15)
             .text(d => d.title.length > 25 ? d.title.substring(0, 25) + '...' : d.title);
         
+        // 工具提示
         const tooltip = d3.select('#tooltip');
         
         node.on('mouseover', function(event, d) {
@@ -418,34 +404,17 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             tooltip.select('#tt-year').text(`发表年份: ${d.year}`);
             tooltip.select('#tt-citations').text(d.citations);
             tooltip.select('#tt-pmid').text(d.id);
-            
-            const topicsContainer = tooltip.select('#tt-topics');
-            topicsContainer.html('');
-            
-            if (d.topics && Array.isArray(d.topics) && d.topics.length > 0) {
-                d.topics.forEach(topicKey => {
-                    const topicInfo = topics[topicKey];
-                    if (topicInfo) {
-                        topicsContainer.append('span')
-                            .attr('class', 'topic')
-                            .style('background', topicInfo.color)
-                            .style('color', '#000')
-                            .text(topicInfo.name);
-                    }
-                });
-            } else if (d.topic && topics[d.topic]) {
-                topicsContainer.append('span')
-                    .attr('class', 'topic')
-                    .style('background', topics[d.topic].color)
-                    .style('color', '#000')
-                    .text(topics[d.topic].name);
-            }
+            tooltip.select('#tt-topic')
+                .text(topics[d.topic].name)
+                .style('background', topics[d.topic].color)
+                .style('color', '#000');
             
             tooltip
                 .style('left', (event.pageX + 15) + 'px')
                 .style('top', (event.pageY - 10) + 'px')
                 .classed('visible', true);
             
+            // 高亮相连的连线
             link.style('stroke', l => 
                 (l.source.id === d.id || l.target.id === d.id) ? '#fff' : '#5a6a8a'
             ).style('stroke-opacity', l => 
@@ -464,6 +433,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
                 .style('stroke-opacity', 0.4);
         })
         .on('click', function(event, d) {
+            // 点击高亮相连节点
             const connectedIds = new Set();
             connectedIds.add(d.id);
             
@@ -483,6 +453,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             }, 2000);
         });
         
+        // 模拟更新位置
         simulation.on('tick', () => {
             link
                 .attr('x1', d => d.source.x)
@@ -499,6 +470,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
                 .attr('y', d => d.y);
         });
         
+        // 拖拽函数
         function dragstarted(event, d) {
             if (!event.active) simulation.alphaTarget(0.3).restart();
             d.fx = d.x;
@@ -516,6 +488,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             d.fy = null;
         }
         
+        // 控制按钮功能
         let animationEnabled = true;
         
         function resetZoom() {
@@ -543,6 +516,7 @@ def generate_network_html(nodes, edges, node_count, edge_count, core_count, exte
             }, 2000);
         }
         
+        // 窗口大小调整
         window.addEventListener('resize', () => {
             const newWidth = document.getElementById('container').offsetWidth;
             const newHeight = document.getElementById('container').offsetHeight;
